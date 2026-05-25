@@ -1,52 +1,51 @@
-from src.StockSim.configuration import Configuration
-from src.StockSim.gestionnaire import GestionnairePile
-from src.StockSim.moteur_mcts import MCTS_Optimiseur
+# Importation de VOTRE package comme une librairie standard
+from logistock import optimalSorting, GestionnairePile, Configuration
 
+# --- 1. DÉFINITION DU PROBLÈME (Données du client) ---
+print("--- 1. CALCUL DE L'OPTIMISATION ---")
+produits = ["Ciment", "Sable", "Gravier"]
+quantites = {
+    "Ciment": 5,
+    "Sable": 10,
+    "Gravier": 3
+}
+# Fréquence de sortie (λ)
+frequences = {
+    "Ciment": 0.2,  # Sort peu souvent
+    "Sable": 0.8,   # Sort très souvent
+    "Gravier": 0.1  # Sort rarement
+}
 
-def simuler_journee():
-    # 1. INITIALISATION
-    # Charge la mémoire (JSON) et les réglages
-    config = Configuration()
+# --- 2. APPEL A L'INTELLIGENCE (API) ---
+# L'utilisateur n'a pas besoin de savoir ce qu'est un MCTS ou un noeud.
+# Il appelle juste "optimalSorting".
+pile_optimale, cout_prevu = optimalSorting(
+    produits=produits,
+    effectifs=quantites,
+    intensites=frequences,
+    hauteur_max=20,
+    iterations=2000, # Il décide du temps de réflexion de l'IA
+)
 
-    # Prépare l'entrepôt (la pile unique)
-    entrepot = GestionnairePile(config)
+print(f"✅ Coût théorique minimal : {cout_prevu:.2f} mouvements")
+print(f"✅ Ordre recommandé (Haut -> Bas) : {pile_optimale}")
 
-    # Prépare l'intelligence (MCTS)
-    ia = MCTS_Optimiseur(config)
+# --- 3. MISE EN PRATIQUE (Gestionnaire) ---
+print("\n--- 2. SIMULATION EN ENTREPÔT ---")
 
-    print("--- DÉMARRAGE DU SYSTÈME LOGISTIQUE ---")
+# Initialisation du Jumeau Numérique
+config = Configuration()
+entrepot = GestionnairePile(config)
 
-    # 2. ARRIVÉE DE NOUVEAUX SACS
-    nouveaux_sacs = ["Ciment", "Sable", "Ciment", "Plâtre"]
+# Le logisticien range les sacs selon le plan de l'IA
+# Note : L'IA donne l'ordre du Sommet vers le Bas.
+# Pour remplir une pile vide, on empile du Sol vers le Sommet (donc on inverse).
+entrepot.afficher_pile()
 
-    for sac in nouveaux_sacs:
-        print(f"\nNouveau sac détecté : {sac}")
+# Visualisation
+entrepot.afficher_pile()
 
-        # Demander à l'IA où le placer
-        # Même avec une seule pile, l'IA simule le coût futur
-        etat_actuel = entrepot.obtenir_etat()
-        index_pile = ia.executer(etat_actuel, sac, iterations=500)
-
-        # Action physique
-        entrepot.ajouter_sac(sac)
-        entrepot.afficher_pile()
-
-    # 3. SIMULATION D'UNE VENTE
-    # Le commerçant vend un sac de Ciment qui était en bas
-    print("\n--- ÉVÉNEMENT : VENTE ---")
-    article_vendu = "Ciment"
-    entrepot.retirer_sac_specifique(article_vendu)
-
-    # 4. MISE À JOUR DE LA MÉMOIRE (Apprentissage)
-    # Imaginons un historique de ventes récent
-    historique = ["Ciment", "Sable", "Ciment", "Ciment", "Plâtre", "Ciment"]
-    config.mettre_a_jour_loi_via_historique(historique)
-
-    print("\n--- ÉTAT FINAL ---")
-    entrepot.afficher_pile()
-    print("Analyse : Le Ciment a maintenant un Pij plus élevé.")
-    print("La prochaine fois, le MCTS saura qu'il ne faut pas le bloquer.")
-
-
-if __name__ == "__main__":
-    simuler_journee()
+# Simulation d'un client qui arrive
+print("Clients à l'approche...")
+entrepot.retirer_sac_specifique("Sable") # Devrait être facile car le sable est fréquent
+entrepot.retirer_sac_specifique("Gravier") # Devrait être coûteux car le gravier est rare
