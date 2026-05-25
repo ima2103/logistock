@@ -1,0 +1,216 @@
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                    PSEUDO-CODE F2.py - MCTS STACK OPTIMIZATION                ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+┌─ CLASSE WarehouseState
+│
+│  Représentation d'un état de l'entrepôt
+│
+│  ATTRIBUTS :
+│    stack       : Pile contenant les variétés (X = case vide)
+│    inventory   : Quantités restantes par variété
+│    mode        : "REMPLISSAGE" ou "SORTIE"
+│    lambdas     : Paramètres d'exit par variété
+│
+│  MÉTHODES :
+│
+│  • get_legal_actions() → liste d'actions possibles
+│    SI mode == "REMPLISSAGE"
+│      RETOURNER variétés avec quantité > 0
+│    SINON
+│      RETOURNER variétés présentes dans la pile
+│
+│  • get_exit_probabilities() → dictionnaire {variété : probabilité}
+│    EXTRAIRE les variétés présentes dans la pile
+│    total ← somme des lambda des variétés présentes
+│    POUR chaque variété présente
+│      prob[variété] ← lambda[variété] / total
+│    RETOURNER prob
+│
+│  • apply(action) → (nouvel_état, coût)
+│    SI mode == "REMPLISSAGE"
+│      PLACER action dans première case libre (bas vers haut)
+│      DÉCRÉMENTER inventory[action]
+│      SI inventory vide
+│        mode_suivant ← "SORTIE"
+│      SINON
+│        mode_suivant ← "REMPLISSAGE"
+│      RETOURNER (nouvel_état, coût=0)
+│    SINON (mode SORTIE)
+│      LOCALISER action dans la pile
+│      coût ← 2 × (nombre d'articles au-dessus) + 1
+│      REMPLACER action par 'X'
+│      RÉORGANISER pile (articles au bas, 'X' au haut)
+│      RETOURNER (nouvel_état, coût)
+
+└─ CLASSE MCTSNode
+│
+│  Nœud de l'arbre de recherche MCTS
+│
+│  ATTRIBUTS :
+│    state           : WarehouseState courant
+│    parent          : Nœud parent (None pour racine)
+│    action          : Action ayant mené à ce nœud
+│    incoming_cost   : Coût de l'arc parent → ce nœud
+│    children        : Dict {action : MCTSNode enfant}
+│    visits          : Nombre de visites de ce nœud
+│    expected_cost   : Espérance de coût total
+│    untried         : Actions non explorées depuis ce nœud
+│
+│  MÉTHODES :
+│
+│  • update_values()
+│    SI pas d'enfants
+│      RETOURNER
+│    SI mode == "REMPLISSAGE"
+│      expected_cost ← min(coûts des enfants)
+│    SINON (mode SORTIE)
+│      probs ← get_exit_probabilities()
+│      expected_cost ← somme pondérée des coûts des enfants
+│                      avec poids = probs[action_enfant]
+
+└─ FONCTION run_mcts(inventory, min_iterations, epsilon, lambdas)
+│
+│  Recherche Monte-Carlo Tree Search
+│
+│  INITIALISER
+│    root ← nouveau MCTSNode(état initial)
+│    current_iter ← 0
+│    converged ← FALSE
+│
+│  TANT QUE NOT converged :
+│
+│    ═══════════════════════════════════════════════════════════════════════════
+│    1. SÉLECTION (descendre l'arbre en direction prometteuse)
+│    ═══════════════════════════════════════════════════════════════════════════
+│
+│    node ← root
+│    TANT QUE (node a des actions non essayées == FALSE) ET (node a enfants)
+│      SI mode du nœud == "REMPLISSAGE"
+│        POUR chaque enfant
+│          SI child.visits == 0
+│            lcb ← -∞  (priorité maximale)
+│          SINON
+│            exploration_term ← 2 × √(ln(parent.visits) / child.visits)
+│            exploitation_term ← child.expected_cost / child.visits
+│            lcb ← exploitation_term - exploration_term
+│        SÉLECTIONNER enfant avec lcb minimum
+│        node ← best_child
+│      SINON (mode == "SORTIE")
+│        CALCULER probabilités pondérées par lambdas
+│        TIRER enfant aléatoire selon ces probabilités
+│        node ← selected_child
+│
+│    ═══════════════════════════════════════════════════════════════════════════
+│    2. EXPANSION (créer un nouveau nœud enfant si possible)
+│    ═══════════════════════════════════════════════════════════════════════════
+│
+│    SI node.untried est non vide
+│      action ← EXTRAIRE une action non essayée
+│      (next_state, cost) ← node.state.apply(action)
+│      child ← nouveau MCTSNode(next_state, parent=node, incoming_cost=cost)
+│      node.children[action] ← child
+│      node ← child
+│
+│    ═══════════════════════════════════════════════════════════════════════════
+│    3. SIMULATION (rollout aléatoire jusqu'à fin)
+│    ═══════════════════════════════════════════════════════════════════════════
+│
+│    sim_state ← node.state
+│    sim_total ← coût cumulé du chemin racine → node
+│    TANT QUE NOT (pile entièrement vidée)
+│      actions ← get_legal_actions()
+│      SI actions vides
+│        SORTIR
+│      CALCULER probabilités pondérées pour SORTIE
+│      TIRER action aléatoire selon probabilités
+│      (sim_state, cost) ← sim_state.apply(action)
+│      sim_total ← sim_total + cost
+│
+│    ═══════════════════════════════════════════════════════════════════════════
+│    4. RÉTROPROPAGATION (mettre à jour nœuds ancêtres)
+│    ═══════════════════════════════════════════════════════════════════════════
+│
+│    curr ← node
+│    TANT QUE curr ≠ NULL
+│      curr.visits ← curr.visits + 1
+│      SI curr n'a pas d'enfants
+│        curr.expected_cost ← moyenne mobile de sim_total
+│      SINON
+│        curr.update_values()
+│      curr ← curr.parent
+│
+│    current_iter ← current_iter + 1
+│
+│    ═══════════════════════════════════════════════════════════════════════════
+│    TEST DE CONVERGENCE (tous les 100 itérations)
+│    ═══════════════════════════════════════════════════════════════════════════
+│
+│    SI (current_iter ≥ min_iterations) ET (current_iter % 100 == 0)
+│      current_value ← root.expected_cost
+│      diff ← |current_value - prev_value|
+│      SI diff < epsilon
+│        converged ← TRUE
+│      prev_value ← current_value
+│      SI current_iter > 10 000 000
+│        ARRÊT FORCÉ
+│
+│  RETOURNER (root, current_iter)
+
+└─ FONCTION draw_tree(root, filename)
+│
+│  Génère un graphique de l'arbre MCTS
+│
+│  CRÉER graphe Graphviz
+│  q ← file [(root, "0")]
+│  cnt ← 1
+│
+│  TANT QUE q est non vide
+│    (curr, name) ← EXTRAIRE de q
+│    POUR chaque enfant de curr
+│      couleur ← bleu si "REMPLISSAGE", jaune si "SORTIE"
+│      CRÉER nœud avec [action | pile | coût | visites]
+│      CRÉER arête parent → enfant
+│      AJOUTER enfant à q
+│      cnt ← cnt + 1
+│      SI cnt > 120
+│        ARRÊTER
+│
+│  EXPORTER en PNG
+
+└─ BLOC PRINCIPAL
+│
+│  DEMANDER À L'UTILISATEUR
+│    • min_iters (entier)
+│    • epsilon (réel)
+│    • nb_varieties (entier)
+│    • POUR chaque variété
+│      - nom
+│      - quantité
+│      - lambda
+│
+│  LANCER run_mcts()
+│  
+│  EXTRAIRE tous les états "pile complète" de l'arbre
+│  TRIER par coût croissant
+│  AFFICHER top 10
+│
+│  GÉNÉRER graphe
+
+
+--- Resumé global de ce qui est la haut ---
+Entrée utilisateur
+       ↓
+Initialiser racine MCTS (pile vide)
+       ↓
+RÉPÉTER jusqu'à convergence :
+  ├─ Sélection (LCB en REMPLISSAGE, probabilités en SORTIE)
+  ├─ Expansion (créer nouvel enfant)
+  ├─ Simulation (rollout aléatoire)
+  └─ Rétropropagation (mise à jour coûts/visites)
+       ↓
+Extraire meilleurs états finaux
+       ↓
+Afficher résultats
+       ↓
+Générer visualisation
